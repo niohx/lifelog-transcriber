@@ -11,13 +11,13 @@ def query_llm(transcription_text_path:Path):
     # APIキーの存在チェック
     if not gemini_api_key:
         print("エラー: 環境変数ファイル (.env) に GEMINI_API_KEY が設定されていません。", file=sys.stderr)
-        return "サマリー生成エラー: APIキーが設定されていません。"
+        return None
         
     try:
         client = genai.Client(api_key=gemini_api_key)
     except Exception as e:
         print(f"エラー: genai.Client の初期化に失敗しました: {e}", file=sys.stderr)
-        return "サマリー生成エラー: クライアントの初期化に失敗しました。"
+        return None
 
     model = "gemini-2.5-flash-preview-04-17"
     
@@ -27,10 +27,10 @@ def query_llm(transcription_text_path:Path):
         transcription = client.files.upload(file=transcription_text_path)
     except FileNotFoundError:
         print(f"エラー: 指定された文字起こしファイルが見つかりません: {transcription_text_path}", file=sys.stderr)
-        return "サマリー生成エラー: 文字起こしファイルが見つかりません。"
+        return None
     except Exception as e:
         print(f"エラー: ファイルのアップロード中に予期せぬエラーが発生しました: {e}", file=sys.stderr)
-        return "サマリー生成エラー: ファイルアップロードに失敗しました。"
+        return None
     
     # プロンプトとテキスト内容を組み合わせる
     prompt = f"""
@@ -56,18 +56,32 @@ def query_llm(transcription_text_path:Path):
             contents=[prompt,transcription]
         )
         print("サマリー生成完了。")
-        # print(response.text) # デバッグ用、必要に応じてコメント解除
-        return response.text
+        print(f"レスポンスの型: {type(response)}")  # デバッグ用
+        print(f"レスポンスの内容: {response}")  # デバッグ用
+        
+        # レスポンスからテキストを取得
+        if hasattr(response, 'text'):
+            return response.text
+        elif hasattr(response, 'candidates') and response.candidates:
+            return response.candidates[0].content.parts[0].text
+        else:
+            print("エラー: レスポンスからテキストを取得できませんでした。", file=sys.stderr)
+            return None
     except Exception as e:
         print(f"エラー: サマリー生成中に予期せぬエラーが発生しました: {e}", file=sys.stderr)
         # GoogleAPIErrorもここで捕捉される
         if hasattr(e, 'message'): # エラーオブジェクトにmessage属性があれば表示
-             return f"サマリー生成エラー: API関連のエラーが発生しました ({e.message})。"
+             print(f"サマリー生成エラー: API関連のエラーが発生しました ({e.message})。", file=sys.stderr)
         else:
-            return "サマリー生成エラー: 不明なエラーが発生しました。"
+            print("サマリー生成エラー: 不明なエラーが発生しました。", file=sys.stderr)
+        return None
 
 def compose_summary(transcription_text_path:Path, output_directory_path:Path=None):
     summary = query_llm(transcription_text_path)
+    
+    if summary is None:
+        print("エラー: サマリーの生成に失敗しました。", file=sys.stderr)
+        return None
     
     # ファイル名から_summary.mdを作成
     summary_filename = transcription_text_path.stem.replace('_transcription', '') + '_summary.md'

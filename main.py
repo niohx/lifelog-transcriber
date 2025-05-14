@@ -9,22 +9,26 @@ import tempfile
 import subprocess
 import shutil
 import re
+import json
 from pathlib import Path
 from query_llm import compose_summary
 
 # 設定の読み込み
-import dotenv
+from dotenv import dotenv_values
 
-dotenv.load_dotenv()
-#.envファイルにはCONFIGというキーがあり、その値はjson形式で記載されています。
-# json形式は以下のように記載します。
-# {
-#     "audio_file": "audio/sample.mp3",
-#     "transcription_output_dir": "transcription_directory_path",
-#     "summary_output_dir": "summary_directory_path "
-# }
+config = dotenv_values(".env")
+#.envファイルには以下の環境変数を設定します。
+# AUDIO_FILE=audio/sample.mp3
+# TRANSCRIPTION_OUTPUT_DIR=transcription_directory_path
+# SUMMARY_OUTPUT_DIR=summary_directory_path
 
-CONFIG = dotenv.get_key(".env", "CONFIG")
+audio_file = config.get("AUDIO_FILE")
+transcription_output_dir = config.get("TRANSCRIPTION_OUTPUT_DIR")
+summary_output_dir = config.get("SUMMARY_OUTPUT_DIR")
+
+if not all([audio_file, transcription_output_dir, summary_output_dir]):
+    print("エラー: .envファイルに必要な環境変数が設定されていません。")
+    sys.exit(1)
 
 # パスの設定
 
@@ -32,9 +36,9 @@ CONFIG = dotenv.get_key(".env", "CONFIG")
 def setup_paths():
     """パスの設定を行う"""
     try:
-        audio_path = Path(CONFIG["audio_file"]).resolve()
-        transcription_dir = Path(CONFIG["transcription_output_dir"]).resolve()
-        summary_dir = Path(CONFIG["summary_output_dir"]).resolve()
+        audio_path = Path(audio_file).resolve()
+        transcription_dir = Path(transcription_output_dir).resolve()
+        summary_dir = Path(summary_output_dir).resolve()
 
         # 出力ディレクトリの存在確認と作成
         transcription_dir.mkdir(parents=True, exist_ok=True)
@@ -338,9 +342,18 @@ def handle_segment_outputs(segment_outputs, final_output_path):
             if os.path.exists(segment_output):
                 os.remove(segment_output)
     elif len(segment_outputs) == 1:
-        # セグメントが1つだけの場合はファイル名を変更
+        # セグメントが1つだけの場合はファイルをコピーしてから元のファイルを削除
         if os.path.exists(segment_outputs[0]) and segment_outputs[0] != final_output_path:
-            os.replace(segment_outputs[0], final_output_path)
+            try:
+                # ファイルをコピー
+                shutil.copy2(segment_outputs[0], final_output_path)
+                # 元のファイルを削除
+                os.remove(segment_outputs[0])
+            except Exception as e:
+                print(f"エラーが発生しました: {e}", file=sys.stderr)
+                # コピーに失敗した場合は元のファイルをそのまま使用
+                if os.path.exists(segment_outputs[0]):
+                    print(f"元のファイル {segment_outputs[0]} をそのまま使用します。", file=sys.stderr)
 
 
 def process_audio_file(audio_path, output_directory_path=None):
@@ -410,7 +423,8 @@ def process_audio_file(audio_path, output_directory_path=None):
 if __name__ == "__main__":
     # パスの設定
     audio_path, transcription_dir, summary_dir = setup_paths()
-
+    # transcription_output_path = Path(
+    #     r"\\YoheiDS\Recorded\GoogleDrive\洋平＠server\obsidian\洋平\サマリー\transcription\250513_0843_transcription.txt").resolve()
     # 文字起こしの実行
     transcription_output_path = process_audio_file(
         audio_path, transcription_dir)
