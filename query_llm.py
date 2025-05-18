@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 from google import genai
 import dotenv
+import re
 
 dotenv.load_dotenv()
 
@@ -83,8 +84,19 @@ def compose_summary(transcription_text_path:Path, output_directory_path:Path=Non
         print("エラー: サマリーの生成に失敗しました。", file=sys.stderr)
         return None
     
-    # ファイル名から_summary.mdを作成
-    summary_filename = transcription_text_path.stem.replace('_transcription', '') + '_summary.md'
+    # ファイル名から日付を抽出（YYMMDD形式）
+    base_name = transcription_text_path.stem
+    date_match = re.match(r'(\d{6})', base_name)
+    if date_match:
+        date_str = date_match.group(1)
+        # YYMMDD形式をYYYYMMDD形式に変換
+        year = f"20{date_str[:2]}"
+        month = date_str[2:4]
+        day = date_str[4:6]
+        summary_filename = f"{year}{month}{day}_summary.md"
+    else:
+        # 日付が抽出できない場合は従来の形式を使用
+        summary_filename = base_name.replace('_transcription', '') + '_summary.md'
     
     # 出力ディレクトリが指定されていない場合は、入力ファイルの親ディレクトリの親ディレクトリを使用
     if output_directory_path is None:
